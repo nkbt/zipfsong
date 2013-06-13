@@ -1,0 +1,358 @@
+<html>
+<head>
+	<title>Spotify Puzzle</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" >
+
+	<style type="text/css">
+		body {font-family: Arial, serif; font-size: 14px; color: #222;}
+
+		header, footer {
+			position: fixed;
+			left: 0;
+			width: 100%;
+			background: #222;
+			text-align: center;
+		}
+		header {top: 0; height: 30px;}
+		header h1 {margin: 0; font-size: 20px; color: #fff; line-height: 30px;}
+		footer {bottom: 0; height: 20px; font-size: 10px; color: #888; line-height: 20px;}
+		footer a { color: #fff; }
+
+		.content {margin: 40px auto 30px auto; min-height: 200px; width: 70%; white-space: nowrap;}
+		.content h2 {margin: 5px; font-size: 20px; line-height: 30px;}
+
+		.input { display: inline-block; width: 50%; }
+		.output { display: inline-block; width: 50%; }
+		.input textarea, .output textarea { margin: 0; width: 100%; }
+
+		.action {margin-top: 10px; text-align: center;}
+		.message {
+			position: relative;
+			border-radius: 5px;
+			background: #fcc;
+			padding: 5px 20px;
+			line-height: 16px;
+			min-height: 16px;
+			visibility: hidden;
+			opacity: 0;
+			transition: visibility 0ms ease 1s, opacity 1s ease;
+		}
+		.message.visible { visibility: visible; opacity: 1; transition: visibility 0ms, opacity 1s; }
+		.close {
+			position:absolute;
+			top: 5px;
+			right: 5px;
+			width: 16px;
+			height: 16px;
+			font-size: 11px;
+			text-align: center; text-decoration: none; font-weight: bold; color: #fff; background: #333;
+			line-height: 16px;
+			text-transform: uppercase;
+			border-radius: 10px;
+		}
+		.task {
+			position: fixed;
+			width: 30%;
+			top: 40px;
+			bottom: 30px;
+			right: 10px;
+			background: #fff;
+			z-index: 100;
+
+			overflow: auto;
+
+			border-radius: 5px;
+			border: 1px solid #ccc;
+			padding: 5px;
+			visibility: hidden;
+			opacity: 0;
+			transition: visibility 0ms ease 1s, opacity 1s ease;
+		}
+		.task.visible { visibility: visible; opacity: 1; transition: visibility 0ms, opacity 1s; }
+		.show-task {position: absolute; right: 10px; top: 0; line-height: 30px; color: #ccc;}
+	</style>
+
+    <script type="text/javascript">
+
+        function showError(text) {
+
+            var $message = document.querySelector('.message');
+            $message.querySelector('.text').innerHTML = text;
+            $message.classList.add('visible');
+
+            return false;
+        }
+
+
+        function closeMessage($x) {
+            var $message = $x.parentNode;
+            $message.classList.remove('visible');
+            $message.querySelector('.text').innerHTML = '';
+            return false;
+        }
+
+        function showTask() {
+
+            var $task = document.querySelector('.task');
+            $task.classList.add('visible');
+
+            return false;
+        }
+
+
+        function closeTask($x) {
+            var $task = $x.parentNode;
+            $task.classList.remove('visible');
+            return false;
+        }
+
+
+        function solve($form) {
+
+            var input = $form.input.value.trim(),
+                    songs = [],
+                    rows = input.split("\n"),
+                    songsNumbers = rows.shift().split(' '),
+                    albumLength = parseInt(songsNumbers.shift().trim(), 10),
+                    songsToSelect = parseInt(songsNumbers.shift().trim(), 10);
+
+            if (albumLength !== rows.length || albumLength < 1 || albumLength > 50000) {
+                return showError("Album length is not valid. Has to be a number between 1 and 50000 and equal amount of album songs");
+            }
+
+            if (songsToSelect < 1 || songsToSelect > albumLength) {
+                return showError("Number of songs to select should be at least 1 and not more then album length");
+            }
+
+            try {
+                // put result directly to output textarea
+                $form.output.value = rows
+
+                    // create array of priorities and fill "songs" hash
+                    // {quality: songName} for easy access
+                        .map(function (row, index) {
+                            row = row.replace(/\s+/, ' ').trim();
+
+                            if (!row.length) {
+                                throw new Error('Empty line detected. Please fill each line correctly');
+                            }
+
+                            var songData = row.split(' '),
+                                    playsCount,
+                                    songName,
+                                    zipf = 1 / index,
+                                    quality,
+                                    errorSuffix = 'Error in line ' + (index + 1) + '. "' + row + '"';
+
+                            if (Object.prototype.toString.call(songData) !== '[object Array]' || songData.length !== 2) {
+                                throw new Error('Each line shold have a number of plays and a song name. ' + errorSuffix);
+                            }
+
+                            playsCount = parseInt(songData.shift().trim(), 10);
+
+                            if (playsCount === undefined || isNaN(playsCount) || playsCount < 0 || playsCount > Math.pow(10, 12)) {
+                                throw new Error('Number of song plays should be a number between 0 and 10<sup>12</sup>. ' + errorSuffix);
+                            }
+
+                            songName = songData.shift().trim();
+
+                            if (!songName.match(/^[a-z0-9_]{1,30}$/)) {
+                                throw new Error('Each song name should only consist of a-z, 0-9, _ and be no longer then 30 characters. ' + errorSuffix);
+                            }
+
+                            quality = playsCount / zipf;
+
+                            songs.push({quality: quality, songName: songName});
+                            return quality;
+                        })
+
+                    // sort qualities descending
+                        .sort(function (a, b) {
+                            return b - a;
+                        })
+
+                    // select requested number of songs
+                        .splice(0, songsToSelect)
+
+                    // get songs names by qualities from "songs" array
+                        .map(function (quality) {
+                            return songs.reduce(function (songName, song, index) {
+                                if (song !== undefined && songName === undefined && song.quality === quality) {
+                                    songName = song.songName;
+
+                                    // delete picked one from "songs" array,
+                                    // so next time another song with the same quality will be picked
+                                    delete songs[index];
+                                }
+                                return songName;
+                            }, undefined);
+                        })
+
+                    // create multi-line string from found array of song names
+                        .join("\n");
+
+            } catch (error) {
+                return showError(error.message);
+            }
+
+            return false;
+        }
+
+    </script>
+
+</head>
+<body>
+<header>
+    <h1>Spotify Puzzle</h1>
+    <a class="show-task" href="#" onclick="return showTask()">Show the task</a>
+</header>
+
+<div class="content">
+    <form action="#" onsubmit="return solve(this)">
+        <div class="message">
+            <span class="text"></span>
+            <a href="#" class="close" onclick="return closeMessage(this);">x</a>
+        </div>
+
+        <div class="input">
+            <h2>Input</h2>
+
+            <textarea name="input" rows="15" cols="50">15 3
+197812 re_hash
+78906 5_4
+189518 tomorrow_comes_today
+39453 new_genious
+210492 clint_eastwood
+26302 man_research
+22544 punk
+19727 sound_check
+17535 double_bass
+18782 rock_the_house
+198189 19_2000
+13151 latin_simone
+12139 starshine
+11272 slow_country
+10521 m1_a1</textarea>
+        </div>
+        <div class="output">
+            <h2>Output</h2>
+            <textarea name="output" rows="15" cols="50" readonly></textarea>
+        </div>
+        <br>
+
+        <div class="action">
+            <input type="submit" value="Solve">
+        </div>
+
+    </form>
+
+</div>
+
+
+<div class="task">
+    <!-- (c) Spotify, https://www.spotify.com/se/jobs/tech/zipfsong/ -->
+    <a href="#" class="close" onclick="return closeTask(this);">x</a>
+    <h2>Zipf's song</h2>
+    <h3>Problem ID: zipfsong</h3>
+    <p>
+        Your slightly pointy-bearded boss has assigned you to write software to find the best songs from different music albums. And the software should be finished in an hour. But don’t panic, you don’t
+        have to solve the problem of writing an AI with good taste. At your disposal is the impeccable taste of a vast horde of long-tailed monkeys. Well, at least almost. The monkeys are not very
+        communicative (or rather, you’re not sure which song “Ook!” is supposed to refer to) so you can’t ask them which songs are the best. What you can do however is to look at which songs the monkeys
+        have listened to and use this information to deduce which songs are the best.
+    </p>
+    <p>
+        At first, you figure that the most listened to songs must be the best songs. However, you quickly realize that this approach is flawed. Even if all songs of the album are equally good, the early
+        songs are more likely to be listened to more often than the later ones, because monkeys will tend to start listening to the first song, listen for a few songs and then, when their fickle ears
+        start craving something else, stop listening. Instead, if all songs are equal, you expect that their play frequencies should follow <i>Zipf’s Law</i>.
+    </p>
+    <p>
+        Zipf’s Law is an empirical law originally formulated about word frequencies in natural languages, but it has been observed that many natural phenomena, such as population sizes and incomes,
+        approximately follow the same law. It predicts that the relative frequency of the <i>i</i>’th most common object (in this case, a song) should be proportional to 1/<i>i</i>.
+    </p>
+    <p>
+        To illustrate this in our setting, suppose we have an album where all songs are equally good. Then by Zipf’s Law, you expect that the first song is listened to twice as often as the second song,
+        and more generally that the first song is listened to <i>i</i> times as often as the <i>i</i>’th song. When some songs are better than others, those will be listened to more often than predicted by
+        Zipf’s Law,	and those are the songs your program should select as the good songs. Specifically, suppose that song <i>i</i> has been played <i>f</i><sub>i</sub> times but that Zipf’s Law predicts
+        that it would have been	played <i>z</i><sub>i</sub> times. Then you define the quality of song <i>i</i> to be <i>q</i><sub>i</sub> = <i>f</i><sub>i</sub> / <i>z</i><sub>i</sub>. Your software
+        should select the songs with the highest values of <i>q</i><sub>i</sub>.
+    </p>
+    <h4>Input</h4>
+    <p>
+        The first line of input contains two integers <i>n</i> and <i>m</i> (1 ≤ <i>n</i> ≤ 50000, 1 ≤ <i>m</i> ≤ <i>n</i>), the number of songs on the album, and the number of songs to select.
+        Then follow <i>n</i> lines. The <i>i</i>’th of these lines contains an integer <i>f</i><sub>i</sub> and string <i>s</i><sub>i</sub>, where 0 ≤ <i>f</i><sub>i</sub> ≤ 10<sup>12</sup> is the
+        number of times the <i>i</i>’th song was listened to, and <i>s</i><sub>i</sub> is the name of the song. Each song name is at most 30 characters long and consists only of the characters ‘a’-‘z’,
+        ‘0’-‘9’, and underscore (‘_’).
+    </p>
+    <h4>Output</h4>
+    <p>
+        Output a list of the <i>m</i> songs with the highest quality <i>q</i><sub>i</sub>, in decreasing order of quality. If two songs have the same quality, give precedence to the one appearing first on
+        the album (presumably there was a reason for the producers to put that song before the other).
+    </p>
+    <div class="inputoutput">
+        <div class="leftcol">
+            <div class="colhead">Sample input 1</div>
+            <div class="inptbox">
+                4 2<br>
+                30 one<br>
+                30 two<br>
+                15 three<br>
+                25 four
+            </div>
+        </div>
+        <div class="rightcol">
+            <div class="colhead">Sample output 1</div>
+            <div class="inptbox">
+                four<br>
+                two
+            </div>
+        </div>
+    </div>
+    <div class="inputoutput">
+        <div class="leftcol">
+            <div class="colhead">Sample input 2</div>
+            <div class="inptbox">
+                15 3<br>
+                197812 re_hash<br>
+                78906 5_4<br>
+                189518 tomorrow_comes_today<br>
+                39453 new_genious<br>
+                210492 clint_eastwood<br>
+                26302 man_research<br>
+                22544 punk<br>
+                19727 sound_check<br>
+                17535 double_bass<br>
+                18782 rock_the_house<br>
+                198189 19_2000<br>
+                13151 latin_simone<br>
+                12139 starshine<br>
+                11272 slow_country<br>
+                10521 m1_a1
+            </div>
+        </div>
+        <div class="rightcol">
+            <div class="colhead">Sample output 2</div>
+            <div class="inptbox">
+                19_2000<br>
+                clint_eastwood<br>
+                tomorrow_comes_today
+            </div>
+        </div>
+    </div>
+    <style type="text/css">
+    .inputoutput{width:100%;overflow:hidden;margin-bottom:20px}
+    .inputoutput .colhead{padding:3px 15px;font-weight:bold}
+    .inputoutput .leftcol{float:left;width:270px}
+    .inputoutput .rightcol{float:right;width:270px}
+    .inputoutput .inptbox{border:1px solid #CCC;border-radius:6px;padding:3px 15px}
+    </style>
+</div>
+
+
+<footer>
+    &copy; 
+    Puzzle: <a href="https://www.spotify.com/se/jobs/tech/zipfsong/">Spotify</a>
+    Solution: <a href="http://butenko.me">Nik Butenko</a> 2013
+</footer>
+
+</body>
+</html>
